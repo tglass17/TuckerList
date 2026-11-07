@@ -46,7 +46,7 @@ const username=()=>user?.user_metadata?.username||user?.email;
 
 async function init(){
   const {data}=await sb.auth.getSession();await setUser(data.session?.user);
-  sb.auth.onAuthStateChange((_e,s)=>setUser(s?.user));
+  sb.auth.onAuthStateChange((_e,s)=>{setTimeout(()=>setUser(s?.user),0)});
 }
 async function setUser(u){user=u||null;admin=false;
   if(user){const {data}=await sb.rpc('is_admin');admin=data===true}
@@ -101,13 +101,15 @@ function editModal(id){const l=window._lv;
   modal(`<h3>Edit level</h3><label>Level name<input id="en" value="${esc(l.name)}"></label><label>Creator<input id="ec" value="${esc(l.creator)}"></label><label>Rank (1 = hardest)<input id="er" type="number" min="1" max="22" value="${l.rank}"></label><label>Thumbnail image<input id="ei" type="file" accept="image/*"></label><p class="msg" id="em"></p><div class="actions"><button onclick="saveLevel(${id})">Save</button><button class="alt" onclick="closeM()">Cancel</button></div>`)}
 function shrink(file){return new Promise((res,rej)=>{const im=new Image();im.onerror=()=>rej(new Error('That image could not be read. Use a JPG, PNG or WEBP file.'));im.onload=()=>{const c=document.createElement('canvas');c.width=412;c.height=232;const x=c.getContext('2d');
   const s=Math.max(412/im.width,232/im.height),w=im.width*s,h=im.height*s;x.drawImage(im,(412-w)/2,(232-h)/2,w,h);res(c.toDataURL('image/jpeg',.82))};im.src=URL.createObjectURL(file)})}
+const timeout=(p,ms,msg)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(msg)),ms))]);
 async function saveLevel(id){const m=$('em');m.textContent='Saving…';
   try{const f=$('ei').files[0];
     const u={name:$('en').value.trim(),creator:$('ec').value.trim(),rank:+$('er').value};
     if(!u.name)throw new Error('Enter a level name.');
     if(!(u.rank>=1))throw new Error('Rank must be a number from 1 to 22.');
-    if(f)u.thumb=await shrink(f);
-    const {data,error}=await sb.from('levels').update(u).eq('id',id).select();
+    if(f){m.textContent='Resizing image…';u.thumb=await timeout(shrink(f),15000,'The image took too long to process. Try a smaller JPG or PNG.')}
+    m.textContent='Saving to the database…';
+    const {data,error}=await timeout(sb.from('levels').update(u).eq('id',id).select(),20000,'The database did not answer. Refresh the page, log in again, and retry.');
     if(error)throw error;
     if(!data||!data.length)throw new Error('The database refused the change. Log in with the exact admin email you put in setup.sql.');
     closeM();level(id)}
