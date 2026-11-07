@@ -98,13 +98,19 @@ async function sendRec(id){const v=$('sv').value.trim();
   $('sm').textContent=error?error.message:'Sent! Your record will show once Tucker approves it.'}
 function editModal(id){const l=window._lv;
   modal(`<h3>Edit level</h3><label>Level name<input id="en" value="${esc(l.name)}"></label><label>Creator<input id="ec" value="${esc(l.creator)}"></label><label>Rank (1 = hardest)<input id="er" type="number" min="1" max="22" value="${l.rank}"></label><label>Thumbnail image<input id="ei" type="file" accept="image/*"></label><p class="msg" id="em"></p><div class="actions"><button onclick="saveLevel(${id})">Save</button><button class="alt" onclick="closeM()">Cancel</button></div>`)}
-function shrink(file){return new Promise(res=>{const im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=412;c.height=232;const x=c.getContext('2d');
+function shrink(file){return new Promise((res,rej)=>{const im=new Image();im.onerror=()=>rej(new Error('That image could not be read. Use a JPG, PNG or WEBP file.'));im.onload=()=>{const c=document.createElement('canvas');c.width=412;c.height=232;const x=c.getContext('2d');
   const s=Math.max(412/im.width,232/im.height),w=im.width*s,h=im.height*s;x.drawImage(im,(412-w)/2,(232-h)/2,w,h);res(c.toDataURL('image/jpeg',.82))};im.src=URL.createObjectURL(file)})}
-async function saveLevel(id){const f=$('ei').files[0];
-  const u={name:$('en').value.trim(),creator:$('ec').value.trim(),rank:+$('er').value};
-  if(f)u.thumb=await shrink(f);
-  const {error}=await sb.from('levels').update(u).eq('id',id);
-  if(error)return $('em').textContent=error.message;closeM();level(id)}
+async function saveLevel(id){const m=$('em');m.textContent='Saving…';
+  try{const f=$('ei').files[0];
+    const u={name:$('en').value.trim(),creator:$('ec').value.trim(),rank:+$('er').value};
+    if(!u.name)throw new Error('Enter a level name.');
+    if(!(u.rank>=1))throw new Error('Rank must be a number from 1 to 22.');
+    if(f)u.thumb=await shrink(f);
+    const {data,error}=await sb.from('levels').update(u).eq('id',id).select();
+    if(error)throw error;
+    if(!data||!data.length)throw new Error('The database refused the change. Log in with the exact admin email you put in setup.sql.');
+    closeM();level(id)}
+  catch(e){m.textContent='Could not save: '+(e.message||e)}}
 async function requests(){
   $('app').innerHTML='<h2>Requests</h2><p class="sub">Loading…</p>';
   const {data:rs}=await sb.from('records').select('*,levels(name,rank)').eq('status','pending').order('created_at');
