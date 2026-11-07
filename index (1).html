@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Tucker List</title>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#1a1033;--panel:#261748;--line:#3b2a68;--text:#f3ecff;--mute:#a999d1;--acc:#4de1ff;--gold:#ffc83d;--bad:#ff6b7a}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 50% -10%,#3a1d7a,var(--bg) 55%) fixed;color:var(--text);font:500 16px/1.5 Nunito,sans-serif}
+h1,h2,h3,.logo{font-family:'Lilita One',sans-serif;font-weight:400}
+header{display:flex;align-items:center;gap:12px;padding:12px 20px;background:#140b28;border-bottom:2px solid var(--line);position:sticky;top:0;z-index:5}
+.logo{font-size:24px;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:8px;margin-right:auto}
+button,.btn{font:inherit;font-weight:700;background:var(--acc);color:#10082a;border:0;border-radius:10px;padding:8px 16px;cursor:pointer;text-decoration:none;display:inline-block}
+button.alt{background:transparent;color:var(--text);border:2px solid var(--line)}button.bad{background:var(--bad)}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+main{max-width:860px;margin:0 auto;padding:28px 18px 80px}
+.hero{text-align:center;padding:48px 0 36px}.hero h1{font-size:clamp(30px,6vw,52px);line-height:1.1;margin:0 0 24px}
+.hero .btn{font-size:20px;padding:14px 32px}
+.row{display:flex;gap:16px;align-items:center;background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:12px;margin-bottom:14px;color:inherit;text-decoration:none}
+.row:hover{border-color:var(--acc)}.thumb{width:206px;height:116px;border-radius:8px;object-fit:cover;background:#140b28;flex:none}
+.rank{font-family:'Lilita One';font-size:28px}.sub{color:var(--mute)}
+.card{background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px}
+input{font:inherit;width:100%;padding:10px;border-radius:8px;border:2px solid var(--line);background:#140b28;color:var(--text);margin:6px 0 12px}
+.rec{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.rec b.p{min-width:56px;font-family:'Lilita One';font-size:20px}
+.full b.p{color:var(--gold)}.rec a{color:var(--acc);margin-left:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.modal{position:fixed;inset:0;background:#000a;display:grid;place-items:center;padding:16px;z-index:9}.modal .card{width:100%;max-width:400px}
+.msg{color:var(--gold)}.nav{display:flex;gap:8px;align-items:center}
+@media(max-width:600px){.row{flex-direction:column;align-items:flex-start}.thumb{width:100%;height:auto;aspect-ratio:16/9}}
+</style></head><body>
+<header><a class="logo" href="#"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#4de1ff" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/></svg>Tucker List</a>
+<div class="nav" id="nav"></div></header>
+<main id="app"></main><div id="modal"></div>
+<script>
+window.onerror=(m)=>{var a=document.getElementById('app');if(a)a.innerHTML='<p class="msg">Something broke: '+m+'</p>'};
+// ====== PUT YOUR SUPABASE VALUES HERE (see README) ======
+const SUPABASE_URL='https://seuutttygflclrkpecre.supabase.co', SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNldXV0dHR5Z2ZsY2xya3BlY3JlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQwODg4MzQsImV4cCI6MjEwOTY2NDgzNH0.IQdKUNTUwrf9R00KsU-Drik_bmqoL2xJCq7W-t-Btl4';
+// ========================================================
+if(!window.supabase){document.getElementById('app').innerHTML='<p class="msg">Could not load the Supabase code from the internet. Check your connection or turn off ad blockers, then refresh.</p>';throw new Error('supabase not loaded')}
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+let user=null,admin=false;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeUrl=u=>/^https?:\/\//i.test(u)?u:'#';
+const thumbOf=l=>l.thumb||'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="412" height="232"><rect width="412" height="232" fill="#140b28"/><text x="206" y="126" fill="#a999d1" font-size="22" text-anchor="middle" font-family="sans-serif">No thumbnail yet</text></svg>');
+const username=()=>user?.user_metadata?.username||user?.email;
+
+async function init(){
+  const {data}=await sb.auth.getSession();await setUser(data.session?.user);
+  sb.auth.onAuthStateChange((_e,s)=>setUser(s?.user));
+  addEventListener('hashchange',route);
+}
+async function setUser(u){user=u||null;admin=false;
+  if(user){const {data}=await sb.rpc('is_admin');admin=data===true}
+  nav();route()}
+function nav(){
+  let h='';
+  if(admin)h+='<button id="reqBtn" title="Requests" aria-label="Requests" onclick="location.hash=\'#requests\'"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10082a" stroke-width="2.6" stroke-linecap="round" style="vertical-align:-3px"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/></svg> Requests</button>';
+  h+=user?`<span class="sub">${esc(username())}</span><button class="alt" onclick="sb.auth.signOut()">Log out</button>`:'<button class="alt" onclick="authModal()">Log in / Sign up</button>';
+  $('nav').innerHTML=h}
+function route(){const h=location.hash.slice(1);
+  if(h==='list')return list();
+  if(h.startsWith('level/'))return level(+h.split('/')[1]);
+  if(h==='requests'&&admin)return requests();
+  home()}
+function home(){$('app').innerHTML=`<div class="hero"><h1>Welcome to the Tucker List where you can submit records of your Geometry Dash gameplay</h1><a class="btn" href="#list">View the main list</a></div>`}
+async function list(){
+  $('app').innerHTML='<h2>Main List</h2><p class="sub">Loading…</p>';
+  const {data:ls,error}=await sb.from('levels').select('*').order('rank');
+  if(error)return $('app').innerHTML='<p class="msg">Could not load levels: '+esc(error.message)+'</p>';
+  $('app').innerHTML='<h2>Main List</h2>'+ls.map(l=>`<a class="row" href="#level/${l.id}"><img class="thumb" src="${esc(thumbOf(l))}" alt=""><div><div class="rank">#${l.rank} – ${esc(l.name)}</div><div class="sub">by ${esc(l.creator||'unknown')}</div></div></a>`).join('')}
+async function level(id){
+  const [{data:l},{data:rs}]=await Promise.all([sb.from('levels').select('*').eq('id',id).single(),
+    sb.from('records').select('*').eq('level_id',id).eq('status','accepted').order('percent',{ascending:false}).order('created_at')]);
+  if(!l)return $('app').innerHTML='<p>Level not found. <a href="#list">Back</a></p>';
+  $('app').innerHTML=`<p><a href="#list" class="sub">← Back to list</a></p>
+  <div class="card"><img class="thumb" style="width:100%;height:auto;aspect-ratio:16/9" src="${esc(thumbOf(l))}" alt="">
+  <h2>#${l.rank} – ${esc(l.name)}</h2><div class="sub">by ${esc(l.creator||'unknown')}</div>
+  <div class="actions"><button onclick="submitModal(${l.id},'${esc(l.name).replace(/'/g,'')}')">Submit Record</button>
+  ${admin?`<button class="alt" onclick="editModal(${l.id})">Edit level</button>`:''}</div></div>
+  <h3>Records</h3><div class="card">${rs.length?rs.map(r=>`<div class="rec ${r.percent==100?'full':''}"><b class="p">${r.percent}%</b><span>${esc(r.username)}</span><a href="${safeUrl(r.video_url)}" target="_blank" rel="noopener">Watch footage</a></div>`).join(''):'<p class="sub">No records yet. Be the first!</p>'}</div>`;
+  window._lv=l}
+function modal(html){$('modal').innerHTML=`<div class="modal" onclick="if(event.target===this)closeM()"><div class="card">${html}</div></div>`}
+function closeM(){$('modal').innerHTML=''}
+function authModal(){modal(`<h3>Log in or sign up</h3><label>Username (shown on records)<input id="au" placeholder="Only needed to sign up"></label><label>Email<input id="ae" type="email"></label><label>Password<input id="ap" type="password"></label><p class="msg" id="am"></p>
+<div class="actions"><button onclick="auth(false)">Log in</button><button class="alt" onclick="auth(true)">Sign up</button></div>`)}
+async function auth(signup){const e=$('ae').value.trim(),p=$('ap').value,u=$('au').value.trim();
+  if(signup&&!u)return $('am').textContent='Pick a username to sign up.';
+  const r=signup?await sb.auth.signUp({email:e,password:p,options:{data:{username:u}}}):await sb.auth.signInWithPassword({email:e,password:p});
+  if(r.error)return $('am').textContent=r.error.message;
+  if(signup&&!r.data.session)return $('am').textContent='Check your email to confirm your account, then log in.';
+  closeM()}
+function submitModal(id,name){
+  if(!user)return authModal();
+  modal(`<h3>Submit a record for ${esc(name)}</h3><p class="sub">Paste a YouTube link (unlisted is fine) or a link to your footage. It must show your completion.</p><label>Video link<input id="sv" placeholder="https://youtu.be/…"></label><p class="msg" id="sm"></p><div class="actions"><button onclick="sendRec(${id})">Send for review</button><button class="alt" onclick="closeM()">Cancel</button></div>`)}
+async function sendRec(id){const v=$('sv').value.trim();
+  if(!/^https?:\/\//i.test(v))return $('sm').textContent='Enter a full link starting with https://';
+  const {error}=await sb.from('records').insert({level_id:id,user_id:user.id,username:username(),video_url:v});
+  $('sm').textContent=error?error.message:'Sent! Your record will show once Tucker approves it.'}
+function editModal(id){const l=window._lv;
+  modal(`<h3>Edit level</h3><label>Level name<input id="en" value="${esc(l.name)}"></label><label>Creator<input id="ec" value="${esc(l.creator)}"></label><label>Rank (1 = hardest)<input id="er" type="number" min="1" max="22" value="${l.rank}"></label><label>Thumbnail image<input id="ei" type="file" accept="image/*"></label><p class="msg" id="em"></p><div class="actions"><button onclick="saveLevel(${id})">Save</button><button class="alt" onclick="closeM()">Cancel</button></div>`)}
+function shrink(file){return new Promise(res=>{const im=new Image();im.onload=()=>{const c=document.createElement('canvas');c.width=412;c.height=232;const x=c.getContext('2d');
+  const s=Math.max(412/im.width,232/im.height),w=im.width*s,h=im.height*s;x.drawImage(im,(412-w)/2,(232-h)/2,w,h);res(c.toDataURL('image/jpeg',.82))};im.src=URL.createObjectURL(file)})}
+async function saveLevel(id){const f=$('ei').files[0];
+  const u={name:$('en').value.trim(),creator:$('ec').value.trim(),rank:+$('er').value};
+  if(f)u.thumb=await shrink(f);
+  const {error}=await sb.from('levels').update(u).eq('id',id);
+  if(error)return $('em').textContent=error.message;closeM();level(id)}
+async function requests(){
+  $('app').innerHTML='<h2>Requests</h2><p class="sub">Loading…</p>';
+  const {data:rs}=await sb.from('records').select('*,levels(name,rank)').eq('status','pending').order('created_at');
+  $('app').innerHTML='<h2>Requests</h2>'+(rs.length?rs.map(r=>`<div class="card"><b>${esc(r.username)}</b> on <b>#${r.levels.rank} ${esc(r.levels.name)}</b><br><a href="${safeUrl(r.video_url)}" target="_blank" rel="noopener" style="color:var(--acc)">Open footage</a>
+  <div class="actions"><input id="p${r.id}" type="number" min="1" max="100" placeholder="% reached" style="width:130px;margin:0"><button onclick="decide(${r.id},true)">Accept</button><button class="bad" onclick="decide(${r.id},false)">Decline</button></div></div>`).join(''):'<p class="sub">No pending requests.</p>')}
+async function decide(id,ok){let u={status:'declined'};
+  if(ok){const p=+$('p'+id).value;if(!(p>=1&&p<=100))return alert('Enter the percentage (1-100) from the video.');u={status:'accepted',percent:p}}
+  const {error}=await sb.from('records').update(u).eq('id',id);if(error)alert(error.message);requests()}
+route();
+init().catch(e=>{$('app').insertAdjacentHTML('beforeend','<p class="msg">Login check failed: '+esc(e.message)+'</p>')});
+</script></body></html>
